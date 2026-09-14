@@ -43,6 +43,9 @@ export default function SignupPage() {
     return (
       <div className="auth-page">
         <div className="auth-card">
+          <div className="auth-logo">
+            <div className="auth-logo-icon">⚽</div>
+          </div>
           <h1>Check your email</h1>
           <p className="auth-subtitle">
             We sent a verification link to <strong>{email}</strong>. 
@@ -57,6 +60,9 @@ export default function SignupPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
+        <div className="auth-logo">
+          <div className="auth-logo-icon">⚽</div>
+        </div>
         <h1>Join the board</h1>
         <p className="auth-subtitle">You need an invite code to create an account</p>
 
