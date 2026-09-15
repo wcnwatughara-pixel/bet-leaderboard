@@ -1,0 +1,476 @@
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../contexts/AuthContext'
+import {
+  getCurrentWeekStart,
+  formatWeekRange,
+  getPastWeeks,
+  buildLeaderboard,
+} from '../../lib/utils'
+
+export default function LeagueDetailPage() {
+  const { slug } = useParams()
+  const { profile, isAdmin: isAppAdmin } = useAuth()
+  const navigate = useNavigate()
+  const [league, setLeague] = useState(null)
+  const [members, setMembers] = useState([])
+  const [myMembership, setMyMembership] = useState(null)
+  const [tab, setTab] = useState('board') // 'board', 'activity', 'settings'
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchLeague()
+  }, [slug, profile])
+
+  async function fetchLeague() {
+    // Fetch league by slug
+    const { data: leagueData } = await supabase
+      .from('leagues')
+      .select('*, creator:profiles!leagues_created_by_fkey(username)')
+      .eq('slug', slug)
+      .single()
+
+    if (!leagueData) {
+      setLoading(false)
+      return
+    }
+
+    setLeague(leagueData)
+
+    // Fetch members
+    const { data: memberData } = await supabase
+      .from('league_members')
+      .select('*, profiles:user_id(id, username, is_active)')
+      .eq('league_id', leagueData.id)
+
+    setMembers(memberData || [])
+    setMyMembership(memberData?.find(m => m.user_id === profile?.id) || null)
+    setLoading(false)
+  }
+
+  if (loading) return <div className="page"><div className="loading">Loading...</div></div>
+
+  if (!league) {
+    return (
+      <div className="page">
+        <div className="empty-state">
+          <p>League not found.</p>
+          <button className="btn btn-primary" onClick={() => navigate('/leagues')} style={{ maxWidth: 200, margin: '16px auto 0' }}>
+            Back to leagues
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const isLeagueAdmin = myMembership?.role === 'admin' || isAppAdmin
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <h1>{league.name}</h1>
+        {league.description && <p className="week-label">{league.description}</p>}
+        <p className="week-label">
+          by {league.creator?.username}
+          {league.is_archived && ' · Archived'}
+        </p>
+      </div>
+
+      <div className="tab-bar">
+        <button className={`tab ${tab === 'board' ? 'active' : ''}`} onClick={() => setTab('board')}>
+          Board
+        </button>
+        <button className={`tab ${tab === 'activity' ? 'active' : ''}`} onClick={() => setTab('activity')}>
+          Activity
+        </button>
+        {isLeagueAdmin && (
+          <button className={`tab ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>
+            Settings
+          </button>
+        )}
+      </div>
+
+      {tab === 'board' && (
+        <LeagueBoard league={league} members={members} />
+      )}
+      {tab === 'activity' && (
+        <LeagueActivity leagueId={league.id} />
+      )}
+      {tab === 'settings' && isLeagueAdmin && (
+        <LeagueSettings
+          league={league}
+          members={members}
+          onUpdate={fetchLeague}
+          profile={profile}
+        />
+      )}
+
+      {/* Leave league button for non-admin members */}
+      {myMembership && !isLeagueAdmin && !league.is_archived && (
+        <LeaveButton leagueId={league.id} profile={profile} onLeave={() => navigate('/leagues')} />
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// LEAGUE LEADERBOARD
+// ============================================
+function LeagueBoard({ league, members }) {
+  const [leaderboard, setLeaderboard] = useState({ qualified: [], unqualified: [], totalUsers: 0 })
+  const [tab, setTab] = useState('weekly')
+  const [weekIndex, setWeekIndex] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [expandedUser, setExpandedUser] = useState(null)
+
+  const weeks = getPastWeeks(12)
+  const isChallenge = league.league_type === 'challenge'
+
+  useEffect(() => {
+    fetchBoard()
+  }, [tab, weekIndex, members])
+
+  async function fetchBoard() {
+    setLoading(true)
+    const memberUserIds = members.map(m => m.user_id)
+
+    if (memberUserIds.length === 0) {
+      setLeaderboard({ qualified: [], unqualified: [], totalUsers: 0 })
+      setLoading(false)
+      return
+    }
+
+    let query = supabase
+      .from('bets')
+      .select('*')
+      .in('user_id', memberUserIds)
+
+    if (isChallenge) {
+      // Challenge: use custom date range
+      query = query
+        .gte('created_at', league.challenge_start)
+        .lte('created_at', league.challenge_end)
+    } else if (tab === 'weekly') {
+      const weekStart = weeks[weekIndex]
+      const weekEnd = new Date(weekStart)
+      weekEnd.setUTCDate(weekEnd.getUTCDate() + 7)
+      query = query
+        .gte('created_at', weekStart.toISOString())
+        .lt('created_at', weekEnd.toISOString())
+    }
+
+    const { data: bets } = await query
+
+    // Group bets by user
+    const userBetsMap = {}
+    for (const m of members) {
+      if (!m.profiles) continue
+      userBetsMap[m.user_id] = {
+        username: m.profiles.username,
+        bets: (bets || []).filter(b => b.user_id === m.user_id),
+      }
+    }
+
+    const minBets = league.min_bets_weekly || 3
+    const result = buildLeaderboard(userBetsMap, minBets)
+    setLeaderboard(result)
+    setLoading(false)
+  }
+
+  return (
+    <div>
+      {/* Ongoing leagues get weekly/all-time tabs; challenges don't */}
+      {!isChallenge && (
+        <>
+          <div className="tab-bar" style={{ marginBottom: 8 }}>
+            <button className={`tab ${tab === 'weekly' ? 'active' : ''}`} onClick={() => { setTab('weekly'); setWeekIndex(0) }}>
+              Weekly
+            </button>
+            <button className={`tab ${tab === 'alltime' ? 'active' : ''}`} onClick={() => setTab('alltime')}>
+              All-time
+            </button>
+          </div>
+
+          {tab === 'weekly' && (
+            <div className="week-selector">
+              <button className="week-arrow" disabled={weekIndex >= weeks.length - 1} onClick={() => setWeekIndex(i => i + 1)}>‹</button>
+              <span className="week-label-display">{formatWeekRange(weeks[weekIndex])}</span>
+              <button className="week-arrow" disabled={weekIndex === 0} onClick={() => setWeekIndex(i => i - 1)}>›</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {isChallenge && (
+        <p className="qualifier-note" style={{ marginBottom: 12 }}>
+          {new Date(league.challenge_start).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
+          {' - '}
+          {new Date(league.challenge_end).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
+        </p>
+      )}
+
+      {loading ? (
+        <div className="loading">Loading...</div>
+      ) : leaderboard.qualified.length === 0 ? (
+        <div className="empty-state">
+          <p>No one qualified yet. {league.min_bets_weekly} settled bets needed.</p>
+          {leaderboard.unqualified.length > 0 && (
+            <div className="unqualified-list">
+              {leaderboard.unqualified.map(u => (
+                <div key={u.userId} className="unqualified-row">
+                  <span className="unq-name">{u.username}</span>
+                  <span className="unq-count">{u.totalBets} / {league.min_bets_weekly} bets</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="leaderboard">
+          {leaderboard.qualified.map(entry => (
+            <div key={entry.userId} className="lb-entry">
+              <div className="lb-row" onClick={() => setExpandedUser(expandedUser === entry.userId ? null : entry.userId)}>
+                <span className={`lb-rank ${entry.rank <= 3 ? `rank-${entry.rank}` : ''}`}>{entry.rank}</span>
+                <span className="lb-name">{entry.username}</span>
+                <span className={`lb-roi ${entry.roi >= 0 ? 'positive' : 'negative'}`}>
+                  {entry.roi >= 0 ? '+' : ''}{entry.roi.toFixed(1)}%
+                </span>
+              </div>
+              {expandedUser === entry.userId && (
+                <div className="lb-expanded">
+                  <div className="stat-grid">
+                    <div className="stat"><span className="stat-label">Win rate</span><span className="stat-value">{entry.winRate.toFixed(1)}%</span></div>
+                    <div className="stat"><span className="stat-label">Total bets</span><span className="stat-value">{entry.totalBets}</span></div>
+                    <div className="stat"><span className="stat-label">W / L</span><span className="stat-value">{entry.wins} / {entry.losses}</span></div>
+                    <div className="stat"><span className="stat-label">Streak</span><span className="stat-value">{entry.streak.type ? `${entry.streak.type === 'win' ? 'W' : 'L'}${entry.streak.count}` : 'None'}</span></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// LEAGUE ACTIVITY FEED
+// ============================================
+function LeagueActivity({ leagueId }) {
+  const [activity, setActivity] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetch() {
+      const { data } = await supabase
+        .from('league_activity')
+        .select('*, profiles:user_id(username)')
+        .eq('league_id', leagueId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      setActivity(data || [])
+      setLoading(false)
+    }
+    fetch()
+  }, [leagueId])
+
+  if (loading) return <div className="loading">Loading...</div>
+
+  if (activity.length === 0) {
+    return <div className="empty-state"><p>No activity yet.</p></div>
+  }
+
+  return (
+    <div className="admin-section">
+      {activity.map(a => (
+        <div key={a.id} className="log-entry">
+          <div className="log-header">
+            <span className={`log-type ${a.event_type}`}>
+              {a.event_type.replace(/_/g, ' ')}
+            </span>
+            <span className="log-date">
+              {new Date(a.created_at).toLocaleDateString('en-NG', {
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+              })}
+            </span>
+          </div>
+          <p className="log-detail">{a.details}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ============================================
+// LEAGUE SETTINGS (league admin only)
+// ============================================
+function LeagueSettings({ league, members, onUpdate, profile }) {
+  const [inviteCodes, setInviteCodes] = useState([])
+  const [copiedId, setCopiedId] = useState(null)
+  const [generating, setGenerating] = useState(false)
+
+  useEffect(() => {
+    fetchCodes()
+  }, [league.id])
+
+  async function fetchCodes() {
+    const { data } = await supabase
+      .from('league_invite_codes')
+      .select('*')
+      .eq('league_id', league.id)
+      .order('created_at', { ascending: false })
+    setInviteCodes(data || [])
+  }
+
+  async function generateCode() {
+    setGenerating(true)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let code = 'LG-'
+    for (let i = 0; i < 4; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)]
+    }
+
+    await supabase.from('league_invite_codes').insert({
+      league_id: league.id,
+      code,
+      created_by: profile.id,
+      max_uses: null,
+      is_active: true,
+    })
+
+    await fetchCodes()
+    setGenerating(false)
+  }
+
+  function copyLink(code) {
+    const url = `${window.location.origin}/league/join/${code.code}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(code.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    })
+  }
+
+  async function toggleCodeActive(code) {
+    await supabase
+      .from('league_invite_codes')
+      .update({ is_active: !code.is_active })
+      .eq('id', code.id)
+    await fetchCodes()
+  }
+
+  async function handleArchive() {
+    if (!confirm('Archive this league? It becomes read-only.')) return
+    await supabase
+      .from('leagues')
+      .update({ is_archived: true })
+      .eq('id', league.id)
+
+    await supabase.from('league_activity').insert({
+      league_id: league.id,
+      user_id: profile.id,
+      event_type: 'league_archived',
+      details: `${profile.username} archived the league`,
+    })
+
+    onUpdate()
+  }
+
+  return (
+    <div className="admin-section">
+      {/* Invite codes section */}
+      <h2 className="section-title">Invite codes</h2>
+      <button className="btn-small btn-primary" onClick={generateCode} disabled={generating} style={{ marginBottom: 12, fontSize: '0.75rem', padding: '8px 12px' }}>
+        {generating ? 'Generating...' : 'Generate league code'}
+      </button>
+
+      {inviteCodes.map(code => (
+        <div key={code.id} className={`code-item ${code.is_active ? 'active' : 'deactivated'}`}>
+          <div className="code-main">
+            <span className="code-string">{code.code}</span>
+            <span className={`code-status-badge ${code.is_active ? 'active' : 'deactivated'}`}>
+              {code.is_active ? 'active' : 'off'}
+            </span>
+          </div>
+          <div className="code-meta">
+            <span>{code.use_count} uses</span>
+          </div>
+          <div className="code-actions">
+            <button className="btn-small btn-ghost" onClick={() => copyLink(code)}>
+              {copiedId === code.id ? 'Copied!' : 'Copy link'}
+            </button>
+            <button className="btn-small btn-ghost" onClick={() => toggleCodeActive(code)}>
+              {code.is_active ? 'Deactivate' : 'Reactivate'}
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {/* Members section */}
+      <h2 className="section-title" style={{ marginTop: 24 }}>Members ({members.length})</h2>
+      {members.map(m => (
+        <div key={m.id} className={`user-card ${!m.is_active ? 'inactive' : ''}`}>
+          <div className="user-card-main">
+            <span className="user-name">
+              {m.profiles?.username}
+              {m.role === 'admin' && <span className="admin-badge">admin</span>}
+            </span>
+          </div>
+        </div>
+      ))}
+
+      {/* Archive */}
+      {!league.is_archived && (
+        <>
+          <h2 className="section-title" style={{ marginTop: 24 }}>Danger zone</h2>
+          <button className="btn-small btn-danger" onClick={handleArchive}>
+            Archive league
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ============================================
+// LEAVE LEAGUE BUTTON
+// ============================================
+function LeaveButton({ leagueId, profile, onLeave }) {
+  const [confirming, setConfirming] = useState(false)
+
+  async function handleLeave() {
+    await supabase
+      .from('league_members')
+      .update({ is_active: false })
+      .eq('league_id', leagueId)
+      .eq('user_id', profile.id)
+
+    await supabase.from('league_activity').insert({
+      league_id: leagueId,
+      user_id: profile.id,
+      event_type: 'member_left',
+      details: `${profile.username} left the league`,
+    })
+
+    onLeave()
+  }
+
+  if (confirming) {
+    return (
+      <div className="confirm-prompt" style={{ marginTop: 20 }}>
+        Leave this league? Your historical bets stay on the board.
+        <div className="confirm-actions">
+          <button onClick={handleLeave}>Yes, leave</button>
+          <button onClick={() => setConfirming(false)}>Cancel</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <button className="btn-small btn-danger" style={{ marginTop: 20 }} onClick={() => setConfirming(true)}>
+      Leave league
+    </button>
+  )
+}

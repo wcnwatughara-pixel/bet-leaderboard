@@ -8,6 +8,11 @@ import LogBetPage from './pages/LogBetPage'
 import MyBetsPage from './pages/MyBetsPage'
 import AdminPage from './pages/AdminPage'
 import ActivityLogPage from './pages/ActivityLogPage'
+import MyLeaguesPage from './pages/leagues/MyLeaguesPage'
+import CreateLeaguePage from './pages/leagues/CreateLeaguePage'
+import BrowseLeaguesPage from './pages/leagues/BrowseLeaguesPage'
+import LeagueDetailPage from './pages/leagues/LeagueDetailPage'
+import JoinLeaguePage from './pages/leagues/JoinLeaguePage'
 
 function ProtectedRoute({ children }) {
   const { session, loading, profile } = useAuth()
@@ -55,6 +60,11 @@ function AppLayout() {
           <Route path="/log-bet" element={<ProtectedRoute><LogBetPage /></ProtectedRoute>} />
           <Route path="/my-bets" element={<ProtectedRoute><MyBetsPage /></ProtectedRoute>} />
           <Route path="/activity" element={<ProtectedRoute><ActivityLogPage /></ProtectedRoute>} />
+          <Route path="/leagues" element={<ProtectedRoute><MyLeaguesPage /></ProtectedRoute>} />
+          <Route path="/leagues/create" element={<ProtectedRoute><CreateLeaguePage /></ProtectedRoute>} />
+          <Route path="/leagues/browse" element={<ProtectedRoute><BrowseLeaguesPage /></ProtectedRoute>} />
+          <Route path="/leagues/:slug" element={<ProtectedRoute><LeagueDetailPage /></ProtectedRoute>} />
+          <Route path="/league/join/:code" element={<JoinLeaguePage />} />
           <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
         </Routes>
       </div>

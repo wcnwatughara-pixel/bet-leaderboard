@@ -1103,3 +1103,111 @@ body {
 
 .code-status-badge.deactivated { background: var(--surface-2); color: var(--text-muted); text-decoration: line-through; }
 .code-status-badge.maxed { background: var(--yellow-bg); color: var(--yellow); }
+
+/* ============================================
+   LEAGUES
+   ============================================ */
+
+.league-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.league-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  text-decoration: none;
+  color: var(--text);
+  display: block;
+  transition: background 0.15s;
+}
+
+.league-card:active {
+  background: var(--surface-2);
+}
+
+.league-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.league-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.league-type-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.league-type-badge.ongoing {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.league-type-badge.challenge {
+  background: var(--yellow-bg);
+  color: var(--yellow);
+}
+
+.league-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.league-creator {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.league-card-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.league-role {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(132, 255, 36, 0.1);
+  color: #84ff24;
+}
+
+.league-access {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.league-archived {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.log-type.member_joined { background: var(--green-bg); color: var(--green); }
+.log-type.member_left { background: var(--red-bg); color: var(--red); }
+.log-type.bet_logged { background: rgba(132, 255, 36, 0.1); color: #84ff24; }
+.log-type.rank_overtake { background: var(--yellow-bg); color: var(--yellow); }
+.log-type.league_created { background: rgba(132, 255, 36, 0.1); color: #84ff24; }
+.log-type.league_archived { background: var(--red-bg); color: var(--red); }
