@@ -55,22 +55,31 @@ export function AuthProvider({ children }) {
       return { error: { message: 'That username is already taken.' } }
     }
 
-    // 2. Validate the invite code
-    const { data: codeData, error: codeError } = await supabase
+    // 2. Validate the invite code (supports multi-use, expiry, and deactivation)
+    const { data: codes, error: codeError } = await supabase
       .from('invite_codes')
       .select('*')
       .eq('code', inviteCode.toUpperCase())
-      .is('used_by', null)
-      .gt('expires_at', new Date().toISOString())
-      .single()
+      .eq('is_active', true)
 
-    if (codeError || !codeData) {
+    if (codeError || !codes || codes.length === 0) {
       return { error: { message: 'Invalid or expired invite code.' } }
+    }
+
+    const codeData = codes[0]
+
+    // Check expiry (null expires_at = never expires)
+    if (codeData.expires_at && new Date(codeData.expires_at) < new Date()) {
+      return { error: { message: 'This invite code has expired.' } }
+    }
+
+    // Check usage cap (null max_uses = unlimited)
+    if (codeData.max_uses !== null && codeData.use_count >= codeData.max_uses) {
+      return { error: { message: 'This invite code has reached its maximum uses.' } }
     }
 
     // 3. Create the auth user with username in metadata
     //    A database trigger (handle_new_user) auto-creates the profile row
-    //    using the username from metadata
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
@@ -81,13 +90,18 @@ export function AuthProvider({ children }) {
 
     if (authError) return { error: authError }
 
-    // 4. Mark the invite code as used
-    //    This works even without a session because the RLS policy
-    //    allows anyone to update unused, non-expired codes
+    // 4. Increment the use count and record the usage
     await supabase
       .from('invite_codes')
-      .update({ used_by: authData.user.id })
+      .update({ use_count: (codeData.use_count || 0) + 1 })
       .eq('id', codeData.id)
+
+    await supabase
+      .from('invite_code_uses')
+      .insert({
+        invite_code_id: codeData.id,
+        used_by: authData.user.id,
+      })
 
     return { data: authData, error: null }
   }

@@ -42,21 +42,26 @@ function InviteCodes({ adminId }) {
   const [codes, setCodes] = useState([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [codeType, setCodeType] = useState('unlimited_permanent') // 'unlimited_permanent', 'unlimited_expiring', 'capped'
+  const [expiryDays, setExpiryDays] = useState(7)
+  const [maxUses, setMaxUses] = useState(10)
+  const [copiedId, setCopiedId] = useState(null)
 
   useEffect(() => { fetchCodes() }, [])
 
   async function fetchCodes() {
     const { data } = await supabase
       .from('invite_codes')
-      .select('*, profiles:used_by(username)')
+      .select('*')
       .order('created_at', { ascending: false })
     setCodes(data || [])
     setLoading(false)
   }
 
-  // Generate a random 8-character code like "BDLB-A7K3"
+  // Generate a random code like "BDLB-A7K3"
   function generateCodeString() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no I/O/0/1 to avoid confusion
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     let code = 'BDLB-'
     for (let i = 0; i < 4; i++) {
       code += chars[Math.floor(Math.random() * chars.length)]
@@ -67,32 +72,134 @@ function InviteCodes({ adminId }) {
   async function handleGenerate() {
     setGenerating(true)
     const code = generateCodeString()
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7) // Expires in 7 days
 
-    const { error } = await supabase.from('invite_codes').insert({
+    // Build insert object based on code type
+    const insert = {
       code,
       created_by: adminId,
-      expires_at: expiresAt.toISOString(),
-    })
+      is_active: true,
+      use_count: 0,
+    }
 
+    if (codeType === 'unlimited_permanent') {
+      insert.max_uses = null
+      insert.expires_at = null
+    } else if (codeType === 'unlimited_expiring') {
+      insert.max_uses = null
+      const exp = new Date()
+      exp.setDate(exp.getDate() + expiryDays)
+      insert.expires_at = exp.toISOString()
+    } else if (codeType === 'capped') {
+      insert.max_uses = maxUses
+      insert.expires_at = null
+    }
+
+    const { error } = await supabase.from('invite_codes').insert(insert)
     if (!error) await fetchCodes()
     setGenerating(false)
+    setShowForm(false)
+  }
+
+  async function toggleActive(code) {
+    await supabase
+      .from('invite_codes')
+      .update({ is_active: !code.is_active })
+      .eq('id', code.id)
+    await fetchCodes()
+  }
+
+  function copyLink(code) {
+    const url = `${window.location.origin}/signup?code=${code.code}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(code.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    })
   }
 
   function codeStatus(code) {
-    if (code.used_by) return 'used'
-    if (new Date(code.expires_at) < new Date()) return 'expired'
+    if (!code.is_active) return 'deactivated'
+    if (code.expires_at && new Date(code.expires_at) < new Date()) return 'expired'
+    if (code.max_uses !== null && code.use_count >= code.max_uses) return 'maxed'
     return 'active'
+  }
+
+  function codeTypeLabel(code) {
+    if (code.max_uses === null && !code.expires_at) return 'Unlimited'
+    if (code.max_uses === null && code.expires_at) return 'Unlimited (expiring)'
+    if (code.max_uses !== null) return `Capped (${code.use_count}/${code.max_uses})`
+    return ''
   }
 
   if (loading) return <div className="loading">Loading...</div>
 
   return (
     <div className="admin-section">
-      <button className="btn btn-primary" onClick={handleGenerate} disabled={generating}>
-        {generating ? 'Generating...' : 'Generate invite code'}
-      </button>
+      {!showForm ? (
+        <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+          Generate invite code
+        </button>
+      ) : (
+        <div className="code-form">
+          <p className="code-form-title">Code type</p>
+          <div className="code-type-options">
+            <button
+              className={`code-type-btn ${codeType === 'unlimited_permanent' ? 'selected' : ''}`}
+              onClick={() => setCodeType('unlimited_permanent')}
+            >
+              Unlimited, never expires
+            </button>
+            <button
+              className={`code-type-btn ${codeType === 'unlimited_expiring' ? 'selected' : ''}`}
+              onClick={() => setCodeType('unlimited_expiring')}
+            >
+              Unlimited, expires
+            </button>
+            <button
+              className={`code-type-btn ${codeType === 'capped' ? 'selected' : ''}`}
+              onClick={() => setCodeType('capped')}
+            >
+              Max uses
+            </button>
+          </div>
+
+          {codeType === 'unlimited_expiring' && (
+            <div className="form-group" style={{ marginTop: 12 }}>
+              <label>Expires in (days)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={expiryDays}
+                onChange={e => setExpiryDays(parseInt(e.target.value) || 1)}
+                min="1"
+                max="365"
+              />
+            </div>
+          )}
+
+          {codeType === 'capped' && (
+            <div className="form-group" style={{ marginTop: 12 }}>
+              <label>Maximum uses</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={maxUses}
+                onChange={e => setMaxUses(parseInt(e.target.value) || 1)}
+                min="1"
+                max="1000"
+              />
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button className="btn btn-primary" onClick={handleGenerate} disabled={generating} style={{ flex: 1 }}>
+              {generating ? 'Generating...' : 'Generate'}
+            </button>
+            <button className="btn-small btn-ghost" onClick={() => setShowForm(false)} style={{ padding: '12px 16px' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="code-list">
         {codes.map(code => {
@@ -104,13 +211,26 @@ function InviteCodes({ adminId }) {
                 <span className={`code-status-badge ${status}`}>{status}</span>
               </div>
               <div className="code-meta">
-                {status === 'used' && code.profiles?.username && (
-                  <span>Used by {code.profiles.username}</span>
+                <span>{codeTypeLabel(code)}</span>
+                {code.use_count > 0 && <span> · {code.use_count} uses</span>}
+                {code.expires_at && status !== 'expired' && (
+                  <span> · Expires {new Date(code.expires_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}</span>
                 )}
+              </div>
+              <div className="code-actions">
+                <button className="btn-small btn-ghost" onClick={() => copyLink(code)}>
+                  {copiedId === code.id ? 'Copied!' : 'Copy link'}
+                </button>
                 {status === 'active' && (
-                  <span>Expires {new Date(code.expires_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}</span>
+                  <button className="btn-small btn-danger" onClick={() => toggleActive(code)}>
+                    Deactivate
+                  </button>
                 )}
-                {status === 'expired' && <span>Expired</span>}
+                {status === 'deactivated' && (
+                  <button className="btn-small btn-primary" onClick={() => toggleActive(code)} style={{ fontSize: '0.75rem', padding: '6px 10px' }}>
+                    Reactivate
+                  </button>
+                )}
               </div>
             </div>
           )

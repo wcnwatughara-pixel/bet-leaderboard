@@ -1052,3 +1052,54 @@ body {
 .menu-item.danger {
   color: var(--red);
 }
+
+/* ============================================
+   CODE GENERATION FORM
+   ============================================ */
+
+.code-form {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.code-form-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.code-type-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.code-type-btn {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.code-type-btn.selected {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(132, 255, 36, 0.05);
+}
+
+.code-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.code-status-badge.deactivated { background: var(--surface-2); color: var(--text-muted); text-decoration: line-through; }
+.code-status-badge.maxed { background: var(--yellow-bg); color: var(--yellow); }
