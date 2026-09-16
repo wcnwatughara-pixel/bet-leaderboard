@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import BottomNav from './components/BottomNav'
+import IntroScreen from './pages/IntroScreen'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import LeaderboardPage from './pages/LeaderboardPage'
@@ -17,7 +18,8 @@ import JoinLeaguePage from './pages/leagues/JoinLeaguePage'
 function ProtectedRoute({ children }) {
   const { session, loading, profile } = useAuth()
   if (loading) return <div className="loading-screen">Loading...</div>
-  if (!session) return <Navigate to="/login" />
+  // Send unauthenticated users to intro screen instead of directly to login
+  if (!session) return <Navigate to="/welcome" />
   // Block deactivated users
   if (profile && !profile.is_active) {
     return (
@@ -54,6 +56,7 @@ function AppLayout() {
     <div className="app">
       <div className="app-content">
         <Routes>
+          <Route path="/welcome" element={<AuthRoute><IntroScreen /></AuthRoute>} />
           <Route path="/login" element={<AuthRoute><LoginPage /></AuthRoute>} />
           <Route path="/signup" element={<AuthRoute><SignupPage /></AuthRoute>} />
           <Route path="/" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
