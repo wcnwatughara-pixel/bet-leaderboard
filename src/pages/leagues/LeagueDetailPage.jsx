@@ -326,7 +326,7 @@ function LeagueBoard({ league, members }) {
                   {userBets[entry.userId] && (
                     <div className="bet-list">
                       {userBets[entry.userId].map(bet => (
-                        <BetRow key={bet.id} bet={bet} />
+                        <BetRow key={bet.id} bet={bet} leagueId={league.id} />
                       ))}
                     </div>
                   )}

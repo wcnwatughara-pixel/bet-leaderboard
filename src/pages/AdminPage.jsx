@@ -264,6 +264,26 @@ function FlaggedBets({ adminId }) {
     setLoading(false)
   }
 
+  // Helper: log an admin action to all leagues the affected user belongs to
+  async function logToUserLeagues(userId, eventType, details) {
+    // Find all active leagues this user is in
+    const { data: memberships } = await supabase
+      .from('league_members')
+      .select('league_id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+
+    if (memberships && memberships.length > 0) {
+      const entries = memberships.map(m => ({
+        league_id: m.league_id,
+        user_id: userId,
+        event_type: eventType,
+        details,
+      }))
+      await supabase.from('league_activity').insert(entries)
+    }
+  }
+
   async function handleResolve(flag, action) {
     // action: 'dismiss', 'uphold_override', 'uphold_delete'
     if (action === 'dismiss') {
@@ -278,6 +298,13 @@ function FlaggedBets({ adminId }) {
         target_bet_id: flag.bet_id,
         details: `Dismissed flag from ${flag.flagger?.username}. Reason: ${flag.reason || 'No reason given'}`,
       })
+
+      // Log to all leagues the bet owner is in
+      await logToUserLeagues(
+        flag.bet.user_id,
+        'flag_dismissed',
+        `Admin dismissed flag on ${flag.bet.user?.username}'s bet ${flag.bet.booking_code}. Reason: ${flag.reason || 'None'}`
+      )
     } else if (action === 'uphold_override') {
       const newOutcome = flag.bet.outcome === 'win' ? 'loss' : 'win'
       await supabase
@@ -297,6 +324,13 @@ function FlaggedBets({ adminId }) {
         target_user_id: flag.bet.user_id,
         details: `Changed outcome from ${flag.bet.outcome} to ${newOutcome} for ${flag.bet.user?.username}'s bet ${flag.bet.booking_code}. Flag reason: ${flag.reason || 'None'}`,
       })
+
+      // Log to all leagues the bet owner is in
+      await logToUserLeagues(
+        flag.bet.user_id,
+        'outcome_overridden',
+        `Admin changed ${flag.bet.user?.username}'s bet ${flag.bet.booking_code} from ${flag.bet.outcome} to ${newOutcome}`
+      )
     } else if (action === 'uphold_delete') {
       await supabase
         .from('flags')
@@ -317,6 +351,13 @@ function FlaggedBets({ adminId }) {
         target_user_id: flag.bet.user_id,
         details: `Deleted ${flag.bet.user?.username}'s bet: ${flag.bet.booking_code}, ₦${flag.bet.stake} @ ${flag.bet.odds} (${flag.bet.outcome}). Flag reason: ${flag.reason || 'None'}`,
       })
+
+      // Log to all leagues the bet owner is in (before deleting the bet)
+      await logToUserLeagues(
+        flag.bet.user_id,
+        'bet_deleted',
+        `Admin deleted ${flag.bet.user?.username}'s bet ${flag.bet.booking_code} (₦${flag.bet.stake} @ ${flag.bet.odds}, ${flag.bet.outcome})`
+      )
 
       await supabase.from('bets').delete().eq('id', flag.bet_id)
     }

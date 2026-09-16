@@ -21,7 +21,7 @@ const SELF_FLAG_REASONS = [
   'Uploaded wrong screenshot',
 ]
 
-export default function BetRow({ bet }) {
+export default function BetRow({ bet, leagueId }) {
   const { profile } = useAuth()
   const [showScreenshot, setShowScreenshot] = useState(false)
   const [flagging, setFlagging] = useState(false)
@@ -65,6 +65,18 @@ export default function BetRow({ bet }) {
       }
     } else {
       setFlagStatus('sent')
+
+      // Log flag event to league activity if inside a league
+      if (leagueId) {
+        await supabase.from('league_activity').insert({
+          league_id: leagueId,
+          user_id: profile.id,
+          event_type: 'bet_flagged',
+          details: isSelf
+            ? `${profile.username} requested a correction on their bet ${bet.booking_code}: ${reason}`
+            : `${profile.username} flagged ${bet.booking_code}: ${reason}`,
+        })
+      }
     }
     setFlagging(false)
     setSelectedReason('')

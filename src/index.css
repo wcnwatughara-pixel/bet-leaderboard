@@ -1383,3 +1383,10 @@ body {
 .log-type.member_removed { background: var(--red-bg); color: var(--red); }
 .log-type.league_edited { background: rgba(132, 255, 36, 0.1); color: #84ff24; }
 .log-type.admin_transferred { background: var(--yellow-bg); color: var(--yellow); }
+
+/* Flag and admin action event types in league activity */
+.log-type.bet_flagged { background: var(--yellow-bg); color: var(--yellow); }
+.log-type.flag_upheld { background: var(--red-bg); color: var(--red); }
+.log-type.flag_dismissed { background: var(--surface-2); color: var(--text-muted); }
+.log-type.bet_deleted { background: var(--red-bg); color: var(--red); }
+.log-type.outcome_overridden { background: var(--yellow-bg); color: var(--yellow); }
