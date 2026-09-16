@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import BetRow from '../components/BetRow'
 import { calculateUserStats } from '../lib/utils'
 
 export default function MyBetsPage() {
@@ -9,7 +10,6 @@ export default function MyBetsPage() {
   const [bets, setBets] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [viewingScreenshot, setViewingScreenshot] = useState(null)
 
   useEffect(() => {
     if (profile) fetchMyBets()
@@ -84,51 +84,7 @@ export default function MyBetsPage() {
       {/* Bet history */}
       <div className="bet-history">
         {bets.map(bet => (
-          <div key={bet.id} className="bet-card">
-            <div className="bet-card-top">
-              <span className={`bet-outcome ${bet.outcome}`}>
-                {bet.outcome === 'win' ? 'WIN' : 'LOSS'}
-              </span>
-              <span className="bet-date">
-                {new Date(bet.created_at).toLocaleDateString('en-NG', {
-                  day: 'numeric', month: 'short', year: 'numeric'
-                })}
-              </span>
-            </div>
-            <div className="bet-card-body">
-              <div className="bet-card-row">
-                <span className="bet-card-label">Code</span>
-                <span className="bet-card-val">{bet.booking_code}</span>
-              </div>
-              <div className="bet-card-row">
-                <span className="bet-card-label">Stake</span>
-                <span className="bet-card-val">₦{Number(bet.stake).toLocaleString()}</span>
-              </div>
-              <div className="bet-card-row">
-                <span className="bet-card-label">Odds</span>
-                <span className="bet-card-val">{bet.odds}</span>
-              </div>
-              {bet.outcome === 'win' && (
-                <div className="bet-card-row">
-                  <span className="bet-card-label">Return</span>
-                  <span className="bet-card-val positive">
-                    ₦{(Number(bet.stake) * Number(bet.odds)).toLocaleString()}
-                  </span>
-                </div>
-              )}
-            </div>
-            <button
-              className="btn-small btn-ghost"
-              onClick={() => setViewingScreenshot(viewingScreenshot === bet.id ? null : bet.id)}
-            >
-              {viewingScreenshot === bet.id ? 'Hide screenshot' : 'View screenshot'}
-            </button>
-            {viewingScreenshot === bet.id && (
-              <div className="screenshot-view">
-                <img src={bet.screenshot_url} alt="Bet screenshot" loading="lazy" />
-              </div>
-            )}
-          </div>
+          <BetRow key={bet.id} bet={bet} />
         ))}
       </div>
     </div>

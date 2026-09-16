@@ -200,7 +200,8 @@ export function calculateUserStats(bets) {
 
 // Build leaderboard rankings from all users' bets
 // minBets: minimum settled bets to qualify
-export function buildLeaderboard(userBetsMap, minBets = 3) {
+// sortBy: 'winRate' or 'roi'
+export function buildLeaderboard(userBetsMap, minBets = 3, sortBy = 'winRate') {
   const entries = []
 
   for (const [userId, { username, bets }] of Object.entries(userBetsMap)) {
@@ -213,12 +214,17 @@ export function buildLeaderboard(userBetsMap, minBets = 3) {
     })
   }
 
-  // Sort qualified users by: win rate desc, then ROI desc, then totalBets desc, then username asc
+  // Sort qualified users by chosen metric, then secondary, then totalBets, then username
   const qualified = entries
     .filter(e => e.qualified)
     .sort((a, b) => {
-      if (b.winRate !== a.winRate) return b.winRate - a.winRate
-      if (b.roi !== a.roi) return b.roi - a.roi
+      if (sortBy === 'winRate') {
+        if (b.winRate !== a.winRate) return b.winRate - a.winRate
+        if (b.roi !== a.roi) return b.roi - a.roi
+      } else {
+        if (b.roi !== a.roi) return b.roi - a.roi
+        if (b.winRate !== a.winRate) return b.winRate - a.winRate
+      }
       if (b.totalBets !== a.totalBets) return b.totalBets - a.totalBets
       return a.username.localeCompare(b.username)
     })

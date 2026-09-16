@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import {
-  getCurrentWeekStart,
-  getCurrentWeekEnd,
   formatWeekRange,
   getPastWeeks,
   buildLeaderboard,
@@ -16,17 +14,17 @@ const ALLTIME_MIN = 10
 export default function LeaderboardPage() {
   const { profile } = useAuth()
   const [tab, setTab] = useState('weekly') // 'weekly' or 'alltime'
+  const [sortBy, setSortBy] = useState('winRate') // 'winRate' or 'roi'
   const [weekIndex, setWeekIndex] = useState(0) // 0 = current week
   const [leaderboard, setLeaderboard] = useState({ qualified: [], unqualified: [], totalUsers: 0 })
   const [loading, setLoading] = useState(true)
   const [expandedUser, setExpandedUser] = useState(null)
-  const [userBets, setUserBets] = useState({}) // userId -> bets for expanded view
 
   const weeks = getPastWeeks(12)
 
   useEffect(() => {
     fetchLeaderboard()
-  }, [tab, weekIndex])
+  }, [tab, weekIndex, sortBy])
 
   async function fetchLeaderboard() {
     setLoading(true)
@@ -72,38 +70,14 @@ export default function LeaderboardPage() {
     }
 
     const minBets = tab === 'weekly' ? WEEKLY_MIN : ALLTIME_MIN
-    const result = buildLeaderboard(userBetsMap, minBets)
+    const result = buildLeaderboard(userBetsMap, minBets, sortBy)
     setLeaderboard(result)
     setLoading(false)
   }
 
-  // Fetch individual bets when a user row is expanded
-  async function handleExpand(userId) {
-    if (expandedUser === userId) {
-      setExpandedUser(null)
-      return
-    }
-    setExpandedUser(userId)
-
-    if (!userBets[userId]) {
-      let query = supabase
-        .from('bets')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-
-      if (tab === 'weekly') {
-        const weekStart = weeks[weekIndex]
-        const weekEnd = new Date(weekStart)
-        weekEnd.setUTCDate(weekEnd.getUTCDate() + 7)
-        query = query
-          .gte('created_at', weekStart.toISOString())
-          .lt('created_at', weekEnd.toISOString())
-      }
-
-      const { data } = await query
-      setUserBets(prev => ({ ...prev, [userId]: data || [] }))
-    }
+  // Simple toggle for expanded stats view (no individual bets on general)
+  function handleExpand(userId) {
+    setExpandedUser(expandedUser === userId ? null : userId)
   }
 
   function formatROI(roi) {
@@ -122,7 +96,24 @@ export default function LeaderboardPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Sharpest</h1>
+        <h1>General</h1>
+      </div>
+
+      {/* Sort toggle */}
+      <div className="sort-toggle">
+        <span className="sort-label">Rank by</span>
+        <button
+          className={`sort-btn ${sortBy === 'winRate' ? 'active' : ''}`}
+          onClick={() => setSortBy('winRate')}
+        >
+          Win rate
+        </button>
+        <button
+          className={`sort-btn ${sortBy === 'roi' ? 'active' : ''}`}
+          onClick={() => setSortBy('roi')}
+        >
+          ROI
+        </button>
       </div>
 
       {/* Tab toggle */}
@@ -205,20 +196,22 @@ export default function LeaderboardPage() {
                     {entry.username}
                     {entry.userId === profile?.id && <span className="you-tag">you</span>}
                   </span>
-                  <span className="lb-winrate">
-                    {entry.winRate.toFixed(0)}%
-                  </span>
+                  {sortBy === 'winRate' ? (
+                    <span className="lb-winrate">{entry.winRate.toFixed(0)}%</span>
+                  ) : (
+                    <span className={`lb-roi ${entry.roi >= 0 ? 'positive' : 'negative'}`}>
+                      {formatROI(entry.roi)}
+                    </span>
+                  )}
                 </div>
 
-                {/* Expanded details */}
+                {/* Expanded: General always shows win rate, total bets, W/L, streak */}
                 {expandedUser === entry.userId && (
                   <div className="lb-expanded">
                     <div className="stat-grid">
                       <div className="stat">
-                        <span className="stat-label">ROI</span>
-                        <span className={`stat-value ${entry.roi >= 0 ? 'positive' : 'negative'}`}>
-                          {formatROI(entry.roi)}
-                        </span>
+                        <span className="stat-label">Win rate</span>
+                        <span className="stat-value">{entry.winRate.toFixed(1)}%</span>
                       </div>
                       <div className="stat">
                         <span className="stat-label">Total bets</span>
@@ -237,15 +230,6 @@ export default function LeaderboardPage() {
                         </span>
                       </div>
                     </div>
-
-                    {/* Individual bets */}
-                    {userBets[entry.userId] && (
-                      <div className="bet-list">
-                        {userBets[entry.userId].map(bet => (
-                          <BetRow key={bet.id} bet={bet} />
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -270,102 +254,4 @@ export default function LeaderboardPage() {
   )
 }
 
-// Individual bet row with lazy-loaded screenshot and flag button
-function BetRow({ bet }) {
-  const { profile } = useAuth()
-  const [showScreenshot, setShowScreenshot] = useState(false)
-  const [flagging, setFlagging] = useState(false)
-  const [flagReason, setFlagReason] = useState('')
-  const [flagStatus, setFlagStatus] = useState(null) // null, 'sent', 'error', 'exists'
 
-  async function handleFlag() {
-    if (!flagging) {
-      setFlagging(true)
-      return
-    }
-
-    const { error } = await supabase
-      .from('flags')
-      .insert({
-        bet_id: bet.id,
-        flagged_by: profile.id,
-        reason: flagReason.trim() || null,
-      })
-
-    if (error) {
-      if (error.code === '23505') {
-        setFlagStatus('exists')
-      } else {
-        setFlagStatus('error')
-      }
-    } else {
-      setFlagStatus('sent')
-    }
-    setFlagging(false)
-  }
-
-  return (
-    <div className="bet-row-detail">
-      <div className="bet-row-main">
-        <span className={`bet-outcome ${bet.outcome}`}>{bet.outcome === 'win' ? 'W' : 'L'}</span>
-        <span className="bet-code">{bet.booking_code}</span>
-      </div>
-      <div className="bet-row-stats">
-        <span>₦{Number(bet.stake).toLocaleString()} stake</span>
-        <span>{bet.odds}x odds</span>
-        {bet.outcome === 'win' && (
-          <span className="positive">₦{(Number(bet.stake) * Number(bet.odds)).toLocaleString()} return</span>
-        )}
-        {bet.outcome === 'loss' && (
-          <span className="negative">-₦{Number(bet.stake).toLocaleString()}</span>
-        )}
-      </div>
-
-      <div className="bet-row-actions">
-        <button
-          className="btn-small btn-ghost"
-          onClick={() => setShowScreenshot(!showScreenshot)}
-        >
-          {showScreenshot ? 'Hide proof' : 'View proof'}
-        </button>
-        {profile && bet.user_id !== profile.id && (
-          <button className="btn-small btn-ghost flag" onClick={handleFlag}>
-            {flagging ? '' : '⚑'}
-          </button>
-        )}
-        {/* Self-flag for corrections */}
-        {profile && bet.user_id === profile.id && (
-          <button className="btn-small btn-ghost flag" onClick={handleFlag}>
-            {flagging ? '' : '✎'}
-          </button>
-        )}
-      </div>
-
-      {/* Flag reason input */}
-      {flagging && (
-        <div className="flag-input">
-          <input
-            type="text"
-            placeholder="What's wrong? (optional)"
-            maxLength={200}
-            value={flagReason}
-            onChange={e => setFlagReason(e.target.value)}
-          />
-          <button className="btn-small btn-primary" onClick={handleFlag}>Submit flag</button>
-          <button className="btn-small btn-ghost" onClick={() => setFlagging(false)}>Cancel</button>
-        </div>
-      )}
-
-      {flagStatus === 'sent' && <p className="flag-msg">Flagged for review.</p>}
-      {flagStatus === 'exists' && <p className="flag-msg">You already flagged this bet.</p>}
-      {flagStatus === 'error' && <p className="flag-msg">Failed to flag. Try again.</p>}
-
-      {/* Lazy-loaded screenshot */}
-      {showScreenshot && (
-        <div className="screenshot-view">
-          <img src={bet.screenshot_url} alt="Bet screenshot" loading="lazy" />
-        </div>
-      )}
-    </div>
-  )
-}

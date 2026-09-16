@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import BetRow from '../../components/BetRow'
 import {
   getCurrentWeekStart,
   formatWeekRange,
@@ -120,19 +121,22 @@ export default function LeagueDetailPage() {
 function LeagueBoard({ league, members }) {
   const [leaderboard, setLeaderboard] = useState({ qualified: [], unqualified: [], totalUsers: 0 })
   const [tab, setTab] = useState('weekly')
+  const [sortBy, setSortBy] = useState('winRate')
   const [weekIndex, setWeekIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [expandedUser, setExpandedUser] = useState(null)
+  const [userBets, setUserBets] = useState({})
 
   const weeks = getPastWeeks(12)
   const isChallenge = league.league_type === 'challenge'
 
   useEffect(() => {
     fetchBoard()
-  }, [tab, weekIndex, members])
+  }, [tab, weekIndex, members, sortBy])
 
   async function fetchBoard() {
     setLoading(true)
+    setExpandedUser(null)
     const memberUserIds = members.map(m => m.user_id)
 
     if (memberUserIds.length === 0) {
@@ -147,7 +151,6 @@ function LeagueBoard({ league, members }) {
       .in('user_id', memberUserIds)
 
     if (isChallenge) {
-      // Challenge: use custom date range
       query = query
         .gte('created_at', league.challenge_start)
         .lte('created_at', league.challenge_end)
@@ -162,7 +165,6 @@ function LeagueBoard({ league, members }) {
 
     const { data: bets } = await query
 
-    // Group bets by user
     const userBetsMap = {}
     for (const m of members) {
       if (!m.profiles) continue
@@ -173,13 +175,63 @@ function LeagueBoard({ league, members }) {
     }
 
     const minBets = league.min_bets_weekly || 3
-    const result = buildLeaderboard(userBetsMap, minBets)
+    const result = buildLeaderboard(userBetsMap, minBets, sortBy)
     setLeaderboard(result)
     setLoading(false)
   }
 
+  // Fetch individual bets when a user row is expanded in a league
+  async function handleExpand(userId) {
+    if (expandedUser === userId) {
+      setExpandedUser(null)
+      return
+    }
+    setExpandedUser(userId)
+
+    if (!userBets[userId]) {
+      const memberUserIds = members.map(m => m.user_id)
+      let query = supabase
+        .from('bets')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (isChallenge) {
+        query = query
+          .gte('created_at', league.challenge_start)
+          .lte('created_at', league.challenge_end)
+      } else if (tab === 'weekly') {
+        const weekStart = weeks[weekIndex]
+        const weekEnd = new Date(weekStart)
+        weekEnd.setUTCDate(weekEnd.getUTCDate() + 7)
+        query = query
+          .gte('created_at', weekStart.toISOString())
+          .lt('created_at', weekEnd.toISOString())
+      }
+
+      const { data } = await query
+      setUserBets(prev => ({ ...prev, [userId]: data || [] }))
+    }
+  }
+
+  function formatROI(roi) {
+    const sign = roi >= 0 ? '+' : ''
+    return `${sign}${roi.toFixed(1)}%`
+  }
+
   return (
     <div>
+      {/* Sort toggle */}
+      <div className="sort-toggle">
+        <span className="sort-label">Rank by</span>
+        <button className={`sort-btn ${sortBy === 'winRate' ? 'active' : ''}`} onClick={() => setSortBy('winRate')}>
+          Win rate
+        </button>
+        <button className={`sort-btn ${sortBy === 'roi' ? 'active' : ''}`} onClick={() => setSortBy('roi')}>
+          ROI
+        </button>
+      </div>
+
       {/* Ongoing leagues get weekly/all-time tabs; challenges don't */}
       {!isChallenge && (
         <>
@@ -230,21 +282,54 @@ function LeagueBoard({ league, members }) {
         <div className="leaderboard">
           {leaderboard.qualified.map(entry => (
             <div key={entry.userId} className="lb-entry">
-              <div className="lb-row" onClick={() => setExpandedUser(expandedUser === entry.userId ? null : entry.userId)}>
+              <div className="lb-row" onClick={() => handleExpand(entry.userId)}>
                 <span className={`lb-rank ${entry.rank <= 3 ? `rank-${entry.rank}` : ''}`}>{entry.rank}</span>
                 <span className="lb-name">{entry.username}</span>
-                <span className={`lb-roi ${entry.roi >= 0 ? 'positive' : 'negative'}`}>
-                  {entry.roi >= 0 ? '+' : ''}{entry.roi.toFixed(1)}%
-                </span>
+                {sortBy === 'winRate' ? (
+                  <span className="lb-winrate">{entry.winRate.toFixed(0)}%</span>
+                ) : (
+                  <span className={`lb-roi ${entry.roi >= 0 ? 'positive' : 'negative'}`}>
+                    {formatROI(entry.roi)}
+                  </span>
+                )}
               </div>
+
+              {/* Expanded: League shows ROI, total bets, W/L, streak + individual bets */}
               {expandedUser === entry.userId && (
                 <div className="lb-expanded">
                   <div className="stat-grid">
-                    <div className="stat"><span className="stat-label">Win rate</span><span className="stat-value">{entry.winRate.toFixed(1)}%</span></div>
-                    <div className="stat"><span className="stat-label">Total bets</span><span className="stat-value">{entry.totalBets}</span></div>
-                    <div className="stat"><span className="stat-label">W / L</span><span className="stat-value">{entry.wins} / {entry.losses}</span></div>
-                    <div className="stat"><span className="stat-label">Streak</span><span className="stat-value">{entry.streak.type ? `${entry.streak.type === 'win' ? 'W' : 'L'}${entry.streak.count}` : 'None'}</span></div>
+                    <div className="stat">
+                      <span className="stat-label">ROI</span>
+                      <span className={`stat-value ${entry.roi >= 0 ? 'positive' : 'negative'}`}>
+                        {formatROI(entry.roi)}
+                      </span>
+                    </div>
+                    <div className="stat">
+                      <span className="stat-label">Total bets</span>
+                      <span className="stat-value">{entry.totalBets}</span>
+                    </div>
+                    <div className="stat">
+                      <span className="stat-label">W / L</span>
+                      <span className="stat-value">{entry.wins} / {entry.losses}</span>
+                    </div>
+                    <div className="stat">
+                      <span className="stat-label">Streak</span>
+                      <span className={`stat-value ${entry.streak.type === 'win' ? 'positive' : 'negative'}`}>
+                        {entry.streak.type
+                          ? `${entry.streak.type === 'win' ? 'W' : 'L'}${entry.streak.count} at ${entry.streak.avgOdds} avg odds`
+                          : 'None'}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Individual bets with screenshots and flags */}
+                  {userBets[entry.userId] && (
+                    <div className="bet-list">
+                      {userBets[entry.userId].map(bet => (
+                        <BetRow key={bet.id} bet={bet} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
