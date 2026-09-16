@@ -205,8 +205,8 @@ export default function LeaderboardPage() {
                     {entry.username}
                     {entry.userId === profile?.id && <span className="you-tag">you</span>}
                   </span>
-                  <span className={`lb-roi ${entry.roi >= 0 ? 'positive' : 'negative'}`}>
-                    {formatROI(entry.roi)}
+                  <span className="lb-winrate">
+                    {entry.winRate.toFixed(0)}%
                   </span>
                 </div>
 
@@ -215,8 +215,10 @@ export default function LeaderboardPage() {
                   <div className="lb-expanded">
                     <div className="stat-grid">
                       <div className="stat">
-                        <span className="stat-label">Win rate</span>
-                        <span className="stat-value">{entry.winRate.toFixed(1)}%</span>
+                        <span className="stat-label">ROI</span>
+                        <span className={`stat-value ${entry.roi >= 0 ? 'positive' : 'negative'}`}>
+                          {formatROI(entry.roi)}
+                        </span>
                       </div>
                       <div className="stat">
                         <span className="stat-label">Total bets</span>
@@ -229,7 +231,9 @@ export default function LeaderboardPage() {
                       <div className="stat">
                         <span className="stat-label">Streak</span>
                         <span className={`stat-value ${entry.streak.type === 'win' ? 'positive' : 'negative'}`}>
-                          {formatStreak(entry.streak) || 'None'}
+                          {entry.streak.type
+                            ? `${entry.streak.type === 'win' ? 'W' : 'L'}${entry.streak.count} at ${entry.streak.avgOdds} avg odds`
+                            : 'None'}
                         </span>
                       </div>
                     </div>
@@ -305,7 +309,16 @@ function BetRow({ bet }) {
       <div className="bet-row-main">
         <span className={`bet-outcome ${bet.outcome}`}>{bet.outcome === 'win' ? 'W' : 'L'}</span>
         <span className="bet-code">{bet.booking_code}</span>
-        <span className="bet-info">₦{Number(bet.stake).toLocaleString()} @ {bet.odds}</span>
+      </div>
+      <div className="bet-row-stats">
+        <span>₦{Number(bet.stake).toLocaleString()} stake</span>
+        <span>{bet.odds}x odds</span>
+        {bet.outcome === 'win' && (
+          <span className="positive">₦{(Number(bet.stake) * Number(bet.odds)).toLocaleString()} return</span>
+        )}
+        {bet.outcome === 'loss' && (
+          <span className="negative">-₦{Number(bet.stake).toLocaleString()}</span>
+        )}
       </div>
 
       <div className="bet-row-actions">

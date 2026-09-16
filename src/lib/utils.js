@@ -213,10 +213,11 @@ export function buildLeaderboard(userBetsMap, minBets = 3) {
     })
   }
 
-  // Sort qualified users by: ROI desc, then totalBets desc, then username asc
+  // Sort qualified users by: win rate desc, then ROI desc, then totalBets desc, then username asc
   const qualified = entries
     .filter(e => e.qualified)
     .sort((a, b) => {
+      if (b.winRate !== a.winRate) return b.winRate - a.winRate
       if (b.roi !== a.roi) return b.roi - a.roi
       if (b.totalBets !== a.totalBets) return b.totalBets - a.totalBets
       return a.username.localeCompare(b.username)
