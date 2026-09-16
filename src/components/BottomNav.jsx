@@ -34,7 +34,7 @@ export default function BottomNav() {
             <path d="M8 21v-6a2 2 0 012-2h4a2 2 0 012 2v6" />
             <path d="M12 3l9 8H3l9-8z" />
           </svg>
-          <span>Board</span>
+          <span>Home</span>
         </NavLink>
 
         <NavLink to="/log-bet" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
