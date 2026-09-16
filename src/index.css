@@ -1330,3 +1330,56 @@ body {
   color: var(--accent);
   background: rgba(132, 255, 36, 0.08);
 }
+
+/* ============================================
+   LEAGUE SETTINGS - MEMBER MANAGEMENT
+   ============================================ */
+
+.member-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.member-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.member-confirm-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  flex-basis: 100%;
+  margin-bottom: 2px;
+}
+
+/* League info display */
+.league-info-display {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.league-info-row {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.league-info-label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.league-edit-form {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+
+.log-type.member_removed { background: var(--red-bg); color: var(--red); }
+.log-type.league_edited { background: rgba(132, 255, 36, 0.1); color: #84ff24; }
+.log-type.admin_transferred { background: var(--yellow-bg); color: var(--yellow); }

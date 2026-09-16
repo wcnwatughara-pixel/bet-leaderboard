@@ -396,6 +396,19 @@ function LeagueSettings({ league, members, onUpdate, profile }) {
   const [copiedId, setCopiedId] = useState(null)
   const [generating, setGenerating] = useState(false)
 
+  // Edit league state
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(league.name)
+  const [editDesc, setEditDesc] = useState(league.description || '')
+  const [editAccess, setEditAccess] = useState(league.access_type)
+  const [editMinBets, setEditMinBets] = useState(league.min_bets_weekly)
+  const [editError, setEditError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Member action confirmations
+  const [confirmKick, setConfirmKick] = useState(null) // member id to kick
+  const [confirmTransfer, setConfirmTransfer] = useState(null) // member id to transfer to
+
   useEffect(() => {
     fetchCodes()
   }, [league.id])
@@ -445,6 +458,94 @@ function LeagueSettings({ league, members, onUpdate, profile }) {
     await fetchCodes()
   }
 
+  // ---- EDIT LEAGUE ----
+  async function handleSaveEdit() {
+    setEditError('')
+    if (editName.trim().length < 2) {
+      setEditError('League name must be at least 2 characters.')
+      return
+    }
+    setSaving(true)
+
+    const { error } = await supabase
+      .from('leagues')
+      .update({
+        name: editName.trim(),
+        description: editDesc.trim() || null,
+        access_type: editAccess,
+        min_bets_weekly: editMinBets,
+      })
+      .eq('id', league.id)
+
+    if (error) {
+      setEditError(error.message || 'Failed to save.')
+    } else {
+      await supabase.from('league_activity').insert({
+        league_id: league.id,
+        user_id: profile.id,
+        event_type: 'league_edited',
+        details: `${profile.username} updated league settings`,
+      })
+      setEditing(false)
+      onUpdate()
+    }
+    setSaving(false)
+  }
+
+  // ---- KICK MEMBER ----
+  async function handleKick(member) {
+    // Remove membership entirely so they can rejoin later if invited
+    await supabase
+      .from('league_members')
+      .delete()
+      .eq('id', member.id)
+
+    await supabase.from('league_activity').insert({
+      league_id: league.id,
+      user_id: profile.id,
+      event_type: 'member_removed',
+      details: `${profile.username} removed ${member.profiles?.username} from the league`,
+    })
+
+    setConfirmKick(null)
+    onUpdate()
+  }
+
+  // ---- TRANSFER ADMIN ----
+  async function handleTransfer(member) {
+    // Set the target member as admin
+    await supabase
+      .from('league_members')
+      .update({ role: 'admin' })
+      .eq('id', member.id)
+
+    // Demote current admin to member
+    const myMembership = members.find(m => m.user_id === profile.id)
+    if (myMembership) {
+      await supabase
+        .from('league_members')
+        .update({ role: 'member' })
+        .eq('id', myMembership.id)
+    }
+
+    // Update league creator reference
+    await supabase
+      .from('leagues')
+      .update({ created_by: member.user_id })
+      .eq('id', league.id)
+
+    await supabase.from('league_activity').insert({
+      league_id: league.id,
+      user_id: profile.id,
+      event_type: 'admin_transferred',
+      details: `${profile.username} transferred admin to ${member.profiles?.username}`,
+    })
+
+    setConfirmTransfer(null)
+    onUpdate()
+  }
+
+  // ---- ARCHIVE ----
   async function handleArchive() {
     if (!confirm('Archive this league? It becomes read-only.')) return
     await supabase
@@ -464,11 +565,63 @@ function LeagueSettings({ league, members, onUpdate, profile }) {
 
   return (
     <div className="admin-section">
-      {/* Invite codes section */}
-      <h2 className="section-title">Invite codes</h2>
-      <button className="btn-small btn-primary" onClick={generateCode} disabled={generating} style={{ marginBottom: 12, fontSize: '0.75rem', padding: '8px 12px' }}>
-        {generating ? 'Generating...' : 'Generate league code'}
-      </button>
+
+      {/* ---- EDIT LEAGUE ---- */}
+      <h2 className="section-title">League info</h2>
+      {!editing ? (
+        <div className="league-info-display">
+          <p className="league-info-row"><span className="league-info-label">Name:</span> {league.name}</p>
+          <p className="league-info-row"><span className="league-info-label">Description:</span> {league.description || 'None'}</p>
+          <p className="league-info-row"><span className="league-info-label">Access:</span> {league.access_type === 'open' ? 'Open' : 'Invite only'}</p>
+          <p className="league-info-row"><span className="league-info-label">Min bets:</span> {league.min_bets_weekly}</p>
+          {!league.is_archived && (
+            <button className="btn-small btn-ghost" style={{ marginTop: 8 }} onClick={() => setEditing(true)}>
+              Edit
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="league-edit-form">
+          <div className="form-group">
+            <label htmlFor="editName">Name</label>
+            <input id="editName" type="text" value={editName} onChange={e => setEditName(e.target.value)} maxLength={50} />
+          </div>
+          <div className="form-group">
+            <label htmlFor="editDesc">Description</label>
+            <input id="editDesc" type="text" value={editDesc} onChange={e => setEditDesc(e.target.value)} maxLength={120} />
+          </div>
+          <div className="form-group">
+            <label>Access</label>
+            <div className="outcome-toggle">
+              <button type="button" className={`outcome-btn ${editAccess === 'invite' ? 'win selected' : ''}`} onClick={() => setEditAccess('invite')}>
+                Invite only
+              </button>
+              <button type="button" className={`outcome-btn ${editAccess === 'open' ? 'win selected' : ''}`} onClick={() => setEditAccess('open')}>
+                Open
+              </button>
+            </div>
+          </div>
+          <div className="form-group">
+            <label htmlFor="editMinBets">Min bets to qualify</label>
+            <input id="editMinBets" type="number" inputMode="numeric" value={editMinBets} onChange={e => setEditMinBets(parseInt(e.target.value) || 1)} min="1" max="50" />
+          </div>
+          {editError && <div className="form-error">{editError}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-small btn-primary" onClick={handleSaveEdit} disabled={saving} style={{ fontSize: '0.75rem', padding: '8px 12px' }}>
+              {saving ? 'Saving...' : 'Save changes'}
+            </button>
+            <button className="btn-small btn-ghost" onClick={() => { setEditing(false); setEditError('') }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ---- INVITE CODES ---- */}
+      <h2 className="section-title" style={{ marginTop: 24 }}>Invite codes</h2>
+      {!league.is_archived && (
+        <button className="btn-small btn-primary" onClick={generateCode} disabled={generating} style={{ marginBottom: 12, fontSize: '0.75rem', padding: '8px 12px' }}>
+          {generating ? 'Generating...' : 'Generate league code'}
+        </button>
+      )}
 
       {inviteCodes.map(code => (
         <div key={code.id} className={`code-item ${code.is_active ? 'active' : 'deactivated'}`}>
@@ -485,27 +638,66 @@ function LeagueSettings({ league, members, onUpdate, profile }) {
             <button className="btn-small btn-ghost" onClick={() => copyLink(code)}>
               {copiedId === code.id ? 'Copied!' : 'Copy link'}
             </button>
-            <button className="btn-small btn-ghost" onClick={() => toggleCodeActive(code)}>
-              {code.is_active ? 'Deactivate' : 'Reactivate'}
-            </button>
+            {!league.is_archived && (
+              <button className="btn-small btn-ghost" onClick={() => toggleCodeActive(code)}>
+                {code.is_active ? 'Deactivate' : 'Reactivate'}
+              </button>
+            )}
           </div>
         </div>
       ))}
 
-      {/* Members section */}
+      {/* ---- MEMBERS ---- */}
       <h2 className="section-title" style={{ marginTop: 24 }}>Members ({members.length})</h2>
-      {members.map(m => (
-        <div key={m.id} className={`user-card ${!m.is_active ? 'inactive' : ''}`}>
-          <div className="user-card-main">
-            <span className="user-name">
-              {m.profiles?.username}
-              {m.role === 'admin' && <span className="admin-badge">admin</span>}
-            </span>
-          </div>
-        </div>
-      ))}
+      {members.map(m => {
+        const isMe = m.user_id === profile.id
+        const isMemberAdmin = m.role === 'admin'
 
-      {/* Archive */}
+        return (
+          <div key={m.id} className={`user-card ${!m.is_active ? 'inactive' : ''}`}>
+            <div className="user-card-main">
+              <span className="user-name">
+                {m.profiles?.username}
+                {isMemberAdmin && <span className="admin-badge">admin</span>}
+                {isMe && <span className="you-tag">you</span>}
+              </span>
+            </div>
+
+            {/* Action buttons: only show for non-self, non-archived leagues */}
+            {!isMe && !league.is_archived && m.is_active && (
+              <div className="member-actions">
+                {/* Kick confirmation */}
+                {confirmKick === m.id ? (
+                  <div className="member-confirm">
+                    <span className="member-confirm-text">Remove {m.profiles?.username}?</span>
+                    <button className="btn-small btn-danger" onClick={() => handleKick(m)}>Yes</button>
+                    <button className="btn-small btn-ghost" onClick={() => setConfirmKick(null)}>No</button>
+                  </div>
+                ) : confirmTransfer === m.id ? (
+                  <div className="member-confirm">
+                    <span className="member-confirm-text">Transfer admin to {m.profiles?.username}? You will become a regular member.</span>
+                    <button className="btn-small btn-warning" onClick={() => handleTransfer(m)}>Yes</button>
+                    <button className="btn-small btn-ghost" onClick={() => setConfirmTransfer(null)}>No</button>
+                  </div>
+                ) : (
+                  <>
+                    {!isMemberAdmin && (
+                      <button className="btn-small btn-danger" onClick={() => setConfirmKick(m.id)}>Remove</button>
+                    )}
+                    {!isMemberAdmin && (
+                      <button className="btn-small btn-ghost" onClick={() => setConfirmTransfer(m.id)}>
+                        Make admin
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* ---- DANGER ZONE ---- */}
       {!league.is_archived && (
         <>
           <h2 className="section-title" style={{ marginTop: 24 }}>Danger zone</h2>
