@@ -1,10 +1,13 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
 export default function LoginPage() {
   const { signIn } = useAuth()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const returnTo = searchParams.get('returnTo')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -27,6 +30,9 @@ export default function LoginPage() {
       } else {
         setError(error.message || 'Failed to sign in.')
       }
+    } else if (returnTo) {
+      // Redirect to the page they came from (e.g. league join)
+      navigate(decodeURIComponent(returnTo))
     }
     setLoading(false)
   }
@@ -98,7 +104,7 @@ export default function LoginPage() {
         </form>
 
         <p className="auth-footer">
-          Have an invite code? <Link to="/signup">Create account</Link>
+          Have an invite code? <Link to={returnTo ? `/signup?returnTo=${returnTo}` : '/signup'}>Create account</Link>
         </p>
       </div>
     </div>

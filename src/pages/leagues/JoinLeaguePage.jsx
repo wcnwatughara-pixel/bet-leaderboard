@@ -103,8 +103,9 @@ export default function JoinLeaguePage() {
     navigate(`/leagues/${league.slug}`)
   }
 
-  // Not logged in
+  // Not logged in - pass the current league join URL as a return destination
   if (!session) {
+    const returnTo = encodeURIComponent(`/league/join/${code}`)
     return (
       <div className="auth-page">
         <div className="auth-card">
@@ -112,10 +113,10 @@ export default function JoinLeaguePage() {
             <div className="auth-logo-icon">⚽</div>
           </div>
           <h1>Join a league</h1>
-          <p className="auth-subtitle">You need an account to join. Sign up first, then come back to this link.</p>
-          <Link to="/signup" className="btn btn-primary">Create account</Link>
+          <p className="auth-subtitle">You need an account to join. Sign up first, then you'll be taken straight to the league.</p>
+          <Link to={`/signup?returnTo=${returnTo}`} className="btn btn-primary">Create account</Link>
           <p className="auth-footer">
-            Already have an account? <Link to="/login">Sign in</Link>
+            Already have an account? <Link to={`/login?returnTo=${returnTo}`}>Sign in</Link>
           </p>
         </div>
       </div>

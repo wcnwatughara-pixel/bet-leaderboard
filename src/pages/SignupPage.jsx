@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function SignupPage() {
   const { signUp } = useAuth()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const returnTo = searchParams.get('returnTo')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -36,7 +38,14 @@ export default function SignupPage() {
     if (error) {
       setError(error.message || 'Failed to create account.')
     } else {
-      setSuccess(true)
+      // Email verification is off, so the user is auto-logged in
+      // Redirect to returnTo (e.g. league join page) or home
+      if (returnTo) {
+        navigate(decodeURIComponent(returnTo))
+      } else {
+        navigate('/')
+      }
+      return
     }
     setLoading(false)
   }
@@ -130,7 +139,7 @@ export default function SignupPage() {
         </form>
 
         <p className="auth-footer">
-          Already have an account? <Link to="/login">Sign in</Link>
+          Already have an account? <Link to={returnTo ? `/login?returnTo=${returnTo}` : '/login'}>Sign in</Link>
         </p>
       </div>
     </div>
